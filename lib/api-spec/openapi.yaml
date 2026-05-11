@@ -1,22 +1,27 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: LogVision — Apache access log analytics API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: logs
+    description: Log file management
+  - name: apps
+    description: Application usage analytics
+  - name: stats
+    description: Global statistics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +29,423 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /logs:
+    get:
+      operationId: listLogs
+      tags: [logs]
+      summary: List uploaded log sessions
+      responses:
+        "200":
+          description: List of log sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogSession"
+    post:
+      operationId: uploadLog
+      tags: [logs]
+      summary: Upload an Apache access.log file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/LogUploadInput"
+      responses:
+        "201":
+          description: Log session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogSession"
+        "400":
+          description: Invalid file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /logs/{sessionId}:
+    delete:
+      operationId: deleteLog
+      tags: [logs]
+      summary: Delete a log session
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /apps:
+    get:
+      operationId: listApps
+      tags: [apps]
+      summary: List detected applications from logs
+      parameters:
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: List of detected applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppSummary"
+
+  /apps/{appName}/patterns:
+    get:
+      operationId: getAppPatterns
+      tags: [apps]
+      summary: Get hourly usage heatmap for an application
+      parameters:
+        - name: appName
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: dateFrom
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+        - name: dateTo
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Hourly usage pattern data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppPatterns"
+
+  /apps/{appName}/pages:
+    get:
+      operationId: getAppPages
+      tags: [apps]
+      summary: Get top pages for an application with hourly breakdown
+      parameters:
+        - name: appName
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: hourFrom
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: hourTo
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Top pages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PageStat"
+
+  /stats/overview:
+    get:
+      operationId: getOverview
+      tags: [stats]
+      summary: Overall statistics summary
+      parameters:
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Overview stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewStats"
+
+  /stats/heatmap:
+    get:
+      operationId: getHeatmap
+      tags: [stats]
+      summary: Global usage heatmap (day of week x hour)
+      parameters:
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: appName
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Heatmap data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HeatmapCell"
+
+  /stats/timeline:
+    get:
+      operationId: getTimeline
+      tags: [stats]
+      summary: Requests over time (hourly buckets)
+      parameters:
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: appName
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+        - name: granularity
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+            enum: [hour, day]
+      responses:
+        "200":
+          description: Timeline data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimelinePoint"
+
+  /stats/status-codes:
+    get:
+      operationId: getStatusCodes
+      tags: [stats]
+      summary: HTTP status code distribution
+      parameters:
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: appName
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+      responses:
+        "200":
+          description: Status code counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StatusCodeStat"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    LogUploadInput:
+      type: object
+      required: [label]
+      properties:
+        label:
+          type: string
+
+    LogSession:
+      type: object
+      required: [id, filename, label, totalLines, parsedLines, dateFrom, dateTo, createdAt]
+      properties:
+        id:
+          type: integer
+        filename:
+          type: string
+        label:
+          type: string
+        totalLines:
+          type: integer
+        parsedLines:
+          type: integer
+        dateFrom:
+          type: ["string", "null"]
+        dateTo:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    AppSummary:
+      type: object
+      required: [name, requestCount, uniqueIPs, peakHour, peakDayOfWeek]
+      properties:
+        name:
+          type: string
+        requestCount:
+          type: integer
+        uniqueIPs:
+          type: integer
+        peakHour:
+          type: integer
+        peakDayOfWeek:
+          type: integer
+        topPage:
+          type: ["string", "null"]
+
+    AppPatterns:
+      type: object
+      required: [appName, heatmap, hourlyTotals]
+      properties:
+        appName:
+          type: string
+        heatmap:
+          type: array
+          items:
+            $ref: "#/components/schemas/HeatmapCell"
+        hourlyTotals:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyTotal"
+
+    HeatmapCell:
+      type: object
+      required: [dayOfWeek, hour, requestCount]
+      properties:
+        dayOfWeek:
+          type: integer
+        hour:
+          type: integer
+        requestCount:
+          type: integer
+
+    HourlyTotal:
+      type: object
+      required: [hour, requestCount]
+      properties:
+        hour:
+          type: integer
+        requestCount:
+          type: integer
+
+    PageStat:
+      type: object
+      required: [url, requestCount, uniqueIPs, statusCodes]
+      properties:
+        url:
+          type: string
+        requestCount:
+          type: integer
+        uniqueIPs:
+          type: integer
+        avgBytes:
+          type: ["number", "null"]
+        statusCodes:
+          type: object
+          additionalProperties:
+            type: integer
+        hourlyDistribution:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourlyTotal"
+
+    OverviewStats:
+      type: object
+      required: [totalRequests, uniqueIPs, totalApps, totalPages, dateFrom, dateTo, avgRequestsPerHour, peakHour, peakDay]
+      properties:
+        totalRequests:
+          type: integer
+        uniqueIPs:
+          type: integer
+        totalApps:
+          type: integer
+        totalPages:
+          type: integer
+        dateFrom:
+          type: ["string", "null"]
+        dateTo:
+          type: ["string", "null"]
+        avgRequestsPerHour:
+          type: number
+        peakHour:
+          type: integer
+        peakDay:
+          type: integer
+
+    TimelinePoint:
+      type: object
+      required: [timestamp, requestCount]
+      properties:
+        timestamp:
+          type: string
+        requestCount:
+          type: integer
+        uniqueIPs:
+          type: ["integer", "null"]
+
+    StatusCodeStat:
+      type: object
+      required: [statusCode, count, percentage]
+      properties:
+        statusCode:
+          type: integer
+        count:
+          type: integer
+        percentage:
+          type: number

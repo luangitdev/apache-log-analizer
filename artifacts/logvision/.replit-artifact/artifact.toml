@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "LogVision — Apache Log Analytics"
+version = "1.0.0"
+id = "artifacts/logvision"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21153
+
+[services.development]
+run = "pnpm --filter @workspace/logvision run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/logvision", "run", "build" ]
+publicDir = "artifacts/logvision/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21153"
+BASE_PATH = "/"

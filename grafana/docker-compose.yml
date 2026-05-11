@@ -1,0 +1,17 @@
+services:
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: logvision-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning
+    restart: unless-stopped
+
+volumes:
+  grafana-data:

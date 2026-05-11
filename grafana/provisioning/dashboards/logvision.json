@@ -1,0 +1,478 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
+    { "type": "datasource", "id": "postgres", "name": "PostgreSQL", "version": "1.0.0" },
+    { "type": "panel", "id": "heatmap", "name": "Heatmap", "version": "" },
+    { "type": "panel", "id": "barchart", "name": "Bar chart", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" }
+  ],
+  "annotations": { "list": [] },
+  "description": "Apache access.log analytics — replicates LogVision heatmap, hourly distribution and top pages",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Visão Geral",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Total de Requisições",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "rawSql": "SELECT COUNT(*) AS \"Total\" FROM log_entries WHERE ($__timeFilter(timestamp) OR '$__from' = '0')",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 1 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "IPs Únicos",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "rawSql": "SELECT COUNT(DISTINCT ip) AS \"IPs\" FROM log_entries",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "purple", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 1 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Aplicações",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "rawSql": "SELECT COUNT(DISTINCT app_name) AS \"Apps\" FROM log_entries",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "orange", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 1 },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "title": "Páginas Únicas",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "rawSql": "SELECT COUNT(DISTINCT url) AS \"Páginas\" FROM log_entries",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 },
+      "id": 101,
+      "title": "Heatmap — Dia × Hora",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "description": "Intensidade de requisições por dia da semana e hora do dia. Cada célula = total de requisições naquele slot.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": { "type": "linear" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 5 },
+      "id": 10,
+      "options": {
+        "calculate": false,
+        "cellGap": 2,
+        "cellRadius": 2,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-blue",
+          "min": 0,
+          "mode": "scheme",
+          "scale": "exponential",
+          "scheme": "Blues",
+          "steps": 128
+        },
+        "exemplars": { "color": "rgba(255,0,255,0.7)" },
+        "filterValues": { "le": 1e-9 },
+        "legend": { "show": true },
+        "rowsFrame": { "layout": "auto" },
+        "showValue": "never",
+        "tooltip": { "maxHeight": 600, "mode": "single", "showColorScale": false, "yHistogram": false },
+        "yAxis": {
+          "axisLabel": "Hora",
+          "axisPlacement": "left",
+          "decimals": 0,
+          "reverse": false,
+          "unit": "short"
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "title": "Heatmap: Dia da Semana × Hora",
+      "type": "heatmap",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT\n  (extract(epoch from\n    '2024-01-07'::date\n    + (day_of_week || ' days')::interval\n    + (hour || ' hours')::interval\n  ) * 1000)::bigint AS \"time\",\n  COUNT(*) AS \"value\",\n  CASE day_of_week\n    WHEN 0 THEN 'Dom'\n    WHEN 1 THEN 'Seg'\n    WHEN 2 THEN 'Ter'\n    WHEN 3 THEN 'Qua'\n    WHEN 4 THEN 'Qui'\n    WHEN 5 THEN 'Sex'\n    WHEN 6 THEN 'Sab'\n  END AS \"series\"\nFROM log_entries\nGROUP BY day_of_week, hour\nORDER BY day_of_week, hour"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "description": "Distribuição de status codes no período",
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false } } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "2xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "3xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "4xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "5xx" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 5 },
+      "id": 11,
+      "options": {
+        "displayLabels": ["percent"],
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] },
+        "pieType": "donut",
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "title": "Status Codes",
+      "type": "piechart",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  CASE\n    WHEN status_code >= 500 THEN '5xx'\n    WHEN status_code >= 400 THEN '4xx'\n    WHEN status_code >= 300 THEN '3xx'\n    ELSE '2xx'\n  END AS \"status\",\n  COUNT(*) AS \"total\"\nFROM log_entries\nGROUP BY 1\nORDER BY 1"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 102,
+      "title": "Requests by Hour of Day",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "description": "Total de requisições agrupadas por hora do dia (0–23), acumulado em todos os dias.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "blue", "mode": "fixed" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Requisições",
+            "axisPlacement": "auto",
+            "fillOpacity": 70,
+            "gradientMode": "none",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "lineWidth": 0,
+            "scaleDistribution": { "type": "linear" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
+      "id": 20,
+      "options": {
+        "barRadius": 0.05,
+        "barWidth": 0.6,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": { "calcs": ["sum", "max"], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": { "maxHeight": 600, "mode": "single", "sort": "none" },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
+      },
+      "title": "Requests by Hour of Day",
+      "type": "barchart",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  LPAD(hour::text, 2, '0') || 'h' AS \"Hora\",\n  SUM(CASE WHEN day_of_week = 0 THEN 1 ELSE 0 END) AS \"Dom\",\n  SUM(CASE WHEN day_of_week = 1 THEN 1 ELSE 0 END) AS \"Seg\",\n  SUM(CASE WHEN day_of_week = 2 THEN 1 ELSE 0 END) AS \"Ter\",\n  SUM(CASE WHEN day_of_week = 3 THEN 1 ELSE 0 END) AS \"Qua\",\n  SUM(CASE WHEN day_of_week = 4 THEN 1 ELSE 0 END) AS \"Qui\",\n  SUM(CASE WHEN day_of_week = 5 THEN 1 ELSE 0 END) AS \"Sex\",\n  SUM(CASE WHEN day_of_week = 6 THEN 1 ELSE 0 END) AS \"Sab\"\nFROM log_entries\nGROUP BY hour\nORDER BY hour"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 103,
+      "title": "Top Pages",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "postgres", "uid": "logvision-pg" },
+      "description": "Páginas mais acessadas com distribuição de status codes e média de bytes transferidos.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false,
+            "minWidth": 50
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 80 }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Página" },
+            "properties": [
+              { "id": "custom.width", "value": 380 },
+              { "id": "custom.align", "value": "left" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Requisições" },
+            "properties": [
+              { "id": "custom.width", "value": 130 },
+              { "id": "custom.displayMode", "value": "gradient-gauge" },
+              { "id": "color", "value": { "mode": "continuous-blues" } },
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "IPs Únicos" },
+            "properties": [{ "id": "custom.width", "value": 120 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Média Bytes" },
+            "properties": [
+              { "id": "custom.width", "value": 130 },
+              { "id": "unit", "value": "decbytes" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "2xx" },
+            "properties": [
+              { "id": "custom.width", "value": 80 },
+              { "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "4xx" },
+            "properties": [
+              { "id": "custom.width", "value": 80 },
+              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "5xx" },
+            "properties": [
+              { "id": "custom.width", "value": 80 },
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Hora Pico" },
+            "properties": [
+              { "id": "custom.width", "value": 100 },
+              { "id": "unit", "value": "none" },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": {
+                  "0": { "text": "00h" }, "1": { "text": "01h" }, "2": { "text": "02h" },
+                  "3": { "text": "03h" }, "4": { "text": "04h" }, "5": { "text": "05h" },
+                  "6": { "text": "06h" }, "7": { "text": "07h" }, "8": { "text": "08h" },
+                  "9": { "text": "09h" }, "10": { "text": "10h" }, "11": { "text": "11h" },
+                  "12": { "text": "12h" }, "13": { "text": "13h" }, "14": { "text": "14h" },
+                  "15": { "text": "15h" }, "16": { "text": "16h" }, "17": { "text": "17h" },
+                  "18": { "text": "18h" }, "19": { "text": "19h" }, "20": { "text": "20h" },
+                  "21": { "text": "21h" }, "22": { "text": "22h" }, "23": { "text": "23h" }
+                }}
+              ]}
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 26 },
+      "id": 30,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Requisições" }]
+      },
+      "pluginVersion": "11.0.0",
+      "title": "Top Pages",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "logvision-pg" },
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT\n  url AS \"Página\",\n  COUNT(*) AS \"Requisições\",\n  COUNT(DISTINCT ip) AS \"IPs Únicos\",\n  ROUND(AVG(bytes)::numeric, 0) AS \"Média Bytes\",\n  SUM(CASE WHEN status_code < 300 THEN 1 ELSE 0 END) AS \"2xx\",\n  SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END) AS \"4xx\",\n  SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS \"5xx\",\n  (\n    SELECT e2.hour\n    FROM log_entries e2\n    WHERE e2.url = e.url\n    GROUP BY e2.hour\n    ORDER BY COUNT(*) DESC\n    LIMIT 1\n  ) AS \"Hora Pico\"\nFROM log_entries e\nGROUP BY url\nORDER BY COUNT(*) DESC\nLIMIT 30"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["apache", "logs", "logvision"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "postgres", "uid": "logvision-pg" },
+        "definition": "SELECT DISTINCT app_name FROM log_entries ORDER BY app_name",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "app",
+        "options": [],
+        "query": "SELECT DISTINCT app_name FROM log_entries ORDER BY app_name",
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "type": "query",
+        "label": "Aplicação",
+        "allValue": ".*"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "postgres", "uid": "logvision-pg" },
+        "definition": "SELECT id::text || ' — ' || COALESCE(label, filename) FROM log_sessions ORDER BY created_at DESC",
+        "hide": 0,
+        "includeAll": true,
+        "multi": false,
+        "name": "session",
+        "options": [],
+        "query": "SELECT id::text || ' — ' || COALESCE(label, filename) FROM log_sessions ORDER BY created_at DESC",
+        "refresh": 1,
+        "regex": "^(\\d+)",
+        "sort": 0,
+        "type": "query",
+        "label": "Sessão de Log",
+        "allValue": ".*"
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "LogVision — Apache Analytics",
+  "uid": "logvision-apache",
+  "version": 1,
+  "weekStart": "monday"
+}

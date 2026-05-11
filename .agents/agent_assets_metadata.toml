@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "HwRsUYceK6OcQyYbdoYsS"
+uri = "file://grafana-logvision.tar.gz"
+type = "unspecified"
+title = "Grafana LogVision — Setup completo"

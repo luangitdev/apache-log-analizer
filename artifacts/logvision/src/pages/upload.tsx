@@ -14,6 +14,9 @@ import { cn } from "@/lib/utils";
 
 type UploadState = "idle" | "uploading" | "success" | "error";
 
+// 10 MB per chunk — stays well under the Replit reverse-proxy body-size limit
+const CHUNK_SIZE = 10 * 1024 * 1024;
+
 export default function UploadLogs() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -24,20 +27,24 @@ export default function UploadLogs() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   const { data: sessions = [] } = useListLogs({ query: { queryKey: getListLogsQueryKey() } });
   const deleteLog = useDeleteLog();
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      setSelectedFile(file);
-      if (!label) setLabel(file.name.replace(/\.(log|gz|txt)$/, ""));
-    }
-  }, [label]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        setSelectedFile(file);
+        if (!label) setLabel(file.name.replace(/\.(log|gz|txt)$/, ""));
+      }
+    },
+    [label]
+  );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -52,61 +59,94 @@ export default function UploadLogs() {
 
     setUploadState("uploading");
     setUploadProgress(0);
+    setProgressLabel("Preparando...");
     setErrorMessage("");
 
-    const formData = new FormData();
-    formData.append("file", selectedFile);
-    formData.append("label", label || selectedFile.name);
+    const file = selectedFile;
+    const sessionLabel = label || file.name;
+    const uploadId = crypto.randomUUID();
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        setUploadProgress(Math.round((e.loaded / e.total) * 90));
+    try {
+      let lastResult: Record<string, unknown> | null = null;
+
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunkText = await file.slice(start, end).text();
+
+        const params = new URLSearchParams({
+          uploadId,
+          chunkIndex: String(i),
+          totalChunks: String(totalChunks),
+          filename: file.name,
+          label: sessionLabel,
+        });
+
+        const res = await fetch(`/api/logs/chunk?${params}`, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: chunkText,
+        });
+
+        if (!res.ok) {
+          let msg = "Upload failed";
+          try {
+            const err = await res.json();
+            msg = err.error || msg;
+          } catch {
+            // ignore
+          }
+          throw new Error(msg);
+        }
+
+        lastResult = await res.json();
+
+        // Show progress: uploading phase = 0–85%, finalizing = 85–100%
+        const isFinal = i === totalChunks - 1;
+        if (isFinal) {
+          setUploadProgress(100);
+          setProgressLabel("Concluído!");
+        } else {
+          const pct = Math.round(((i + 1) / totalChunks) * 85);
+          setUploadProgress(pct);
+          const parsed = (lastResult?.parsedSoFar as number) ?? 0;
+          setProgressLabel(
+            `Chunk ${i + 1} / ${totalChunks} — ${parsed.toLocaleString()} entradas processadas`
+          );
+        }
       }
-    };
 
-    xhr.onload = async () => {
-      if (xhr.status === 201) {
-        setUploadProgress(100);
+      // lastResult here is the 201 response from the final chunk
+      if (lastResult) {
+        const result = lastResult;
         setUploadState("success");
-        const result = JSON.parse(xhr.responseText);
         await queryClient.invalidateQueries({ queryKey: getListLogsQueryKey() });
-        setSessionId(result.id);
+        setSessionId(result.id as number);
         toast({
-          title: "Log file uploaded",
-          description: `Parsed ${result.parsedLines.toLocaleString()} of ${result.totalLines.toLocaleString()} lines`,
+          title: "Arquivo importado com sucesso",
+          description: `${(result.parsedLines as number).toLocaleString()} de ${(result.totalLines as number).toLocaleString()} linhas processadas`,
         });
         setSelectedFile(null);
         setLabel("");
         setUploadProgress(0);
-        setTimeout(() => setUploadState("idle"), 2000);
-      } else {
-        setUploadState("error");
-        try {
-          const err = JSON.parse(xhr.responseText);
-          setErrorMessage(err.error || "Upload failed");
-        } catch {
-          setErrorMessage("Upload failed");
-        }
+        setProgressLabel("");
+        setTimeout(() => setUploadState("idle"), 2500);
       }
-    };
-
-    xhr.onerror = () => {
+    } catch (err: unknown) {
       setUploadState("error");
-      setErrorMessage("Network error during upload");
-    };
-
-    xhr.open("POST", "/api/logs");
-    xhr.send(formData);
+      setErrorMessage(err instanceof Error ? err.message : "Upload failed");
+    }
   };
 
   const handleDelete = async (id: number) => {
     await deleteLog.mutateAsync({ sessionId: id });
     await queryClient.invalidateQueries({ queryKey: getListLogsQueryKey() });
-    toast({ title: "Session deleted" });
+    toast({ title: "Sessão excluída" });
   };
 
   const formatSize = (bytes: number) => {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
     if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${bytes} B`;
@@ -125,7 +165,7 @@ export default function UploadLogs() {
         <CardHeader>
           <CardTitle>Upload Log File</CardTitle>
           <CardDescription>
-            Supports Apache combined log format (access.log). Sem limite de tamanho.
+            Suporta formato Apache Combined Log (access.log). Sem limite de tamanho — arquivos grandes são enviados em partes automaticamente.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -153,6 +193,11 @@ export default function UploadLogs() {
                 <FileText className="h-10 w-10 text-primary" />
                 <p className="font-medium">{selectedFile.name}</p>
                 <p className="text-sm text-muted-foreground">{formatSize(selectedFile.size)}</p>
+                {selectedFile.size > CHUNK_SIZE && (
+                  <p className="text-xs text-muted-foreground">
+                    Será enviado em {Math.ceil(selectedFile.size / CHUNK_SIZE)} partes de 10 MB
+                  </p>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -162,15 +207,15 @@ export default function UploadLogs() {
                     setLabel("");
                   }}
                 >
-                  Remove
+                  Remover
                 </Button>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-3">
                 <Upload className="h-10 w-10 text-muted-foreground" />
                 <div>
-                  <p className="font-medium">Drop your access.log file here</p>
-                  <p className="text-sm text-muted-foreground mt-1">or click to browse</p>
+                  <p className="font-medium">Arraste seu arquivo access.log aqui</p>
+                  <p className="text-sm text-muted-foreground mt-1">ou clique para selecionar</p>
                 </div>
               </div>
             )}
@@ -178,10 +223,10 @@ export default function UploadLogs() {
 
           {/* Label */}
           <div className="space-y-1.5">
-            <Label htmlFor="label">Session label</Label>
+            <Label htmlFor="label">Nome da sessão</Label>
             <Input
               id="label"
-              placeholder="e.g. production-may-2025"
+              placeholder="ex: producao-maio-2025"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
             />
@@ -190,16 +235,17 @@ export default function UploadLogs() {
           {/* Progress / status */}
           {uploadState === "uploading" && (
             <div className="space-y-2">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{progressLabel}</span>
+                <span>{uploadProgress}%</span>
+              </div>
               <Progress value={uploadProgress} className="h-2" />
-              <p className="text-sm text-muted-foreground text-center">
-                Uploading and parsing... {uploadProgress}%
-              </p>
             </div>
           )}
           {uploadState === "success" && (
             <div className="flex items-center gap-2 text-sm text-green-600">
               <CheckCircle className="h-4 w-4" />
-              Upload complete
+              Upload concluído com sucesso
             </div>
           )}
           {uploadState === "error" && (
@@ -217,12 +263,12 @@ export default function UploadLogs() {
             {uploadState === "uploading" ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Uploading...
+                Enviando...
               </>
             ) : (
               <>
                 <Upload className="h-4 w-4 mr-2" />
-                Upload and Parse
+                Importar e Processar
               </>
             )}
           </Button>
@@ -233,8 +279,10 @@ export default function UploadLogs() {
       {sessions.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Uploaded Sessions</CardTitle>
-            <CardDescription>{sessions.length} log session{sessions.length !== 1 ? "s" : ""} available</CardDescription>
+            <CardTitle>Sessões Importadas</CardTitle>
+            <CardDescription>
+              {sessions.length} sessão{sessions.length !== 1 ? "ões" : ""} disponível{sessions.length !== 1 ? "eis" : ""}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -246,15 +294,20 @@ export default function UploadLogs() {
                   <div className="min-w-0">
                     <p className="font-medium truncate">{session.label}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      {session.parsedLines.toLocaleString()} entries
+                      {session.parsedLines.toLocaleString()} entradas
                       {session.dateFrom && session.dateTo && (
-                        <> &middot; {new Date(session.dateFrom).toLocaleDateString()} – {new Date(session.dateTo).toLocaleDateString()}</>
+                        <>
+                          {" "}
+                          &middot;{" "}
+                          {new Date(session.dateFrom).toLocaleDateString("pt-BR")} –{" "}
+                          {new Date(session.dateTo).toLocaleDateString("pt-BR")}
+                        </>
                       )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 ml-4 shrink-0">
                     <Badge variant="outline" className="text-xs">
-                      {session.parsedLines.toLocaleString()} lines
+                      {session.parsedLines.toLocaleString()} linhas
                     </Badge>
                     <Button
                       variant="ghost"

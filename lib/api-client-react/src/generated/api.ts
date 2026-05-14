@@ -22,6 +22,7 @@ import type {
   ErrorResponse,
   GetAppPagesParams,
   GetAppPatternsParams,
+  GetGlobalPagesParams,
   GetHeatmapParams,
   GetOverviewParams,
   GetStatusCodesParams,
@@ -667,6 +668,100 @@ export function useGetAppPages<
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetAppPagesQueryOptions(appName, params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Top pages across all applications with hourly breakdown
+ */
+export const getGetGlobalPagesUrl = (params?: GetGlobalPagesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/stats/pages?${stringifiedParams}`
+    : `/api/stats/pages`;
+};
+
+export const getGlobalPages = async (
+  params?: GetGlobalPagesParams,
+  options?: RequestInit,
+): Promise<PageStat[]> => {
+  return customFetch<PageStat[]>(getGetGlobalPagesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetGlobalPagesQueryKey = (params?: GetGlobalPagesParams) => {
+  return [`/api/stats/pages`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetGlobalPagesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGlobalPages>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetGlobalPagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGlobalPages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetGlobalPagesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getGlobalPages>>> = ({
+    signal,
+  }) => getGlobalPages(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGlobalPages>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetGlobalPagesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGlobalPages>>
+>;
+export type GetGlobalPagesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Top pages across all applications with hourly breakdown
+ */
+
+export function useGetGlobalPages<
+  TData = Awaited<ReturnType<typeof getGlobalPages>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: GetGlobalPagesParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getGlobalPages>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetGlobalPagesQueryOptions(params, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

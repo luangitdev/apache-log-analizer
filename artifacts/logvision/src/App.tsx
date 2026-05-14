@@ -7,6 +7,7 @@ import { MainLayout } from "./components/layout";
 import Dashboard from "./pages/dashboard";
 import AppDetail from "./pages/app-detail";
 import UploadLogs from "./pages/upload";
+import GlobalOverview from "./pages/global-overview";
 
 const queryClient = new QueryClient();
 
@@ -15,6 +16,7 @@ function Router() {
     <MainLayout>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/overview" component={GlobalOverview} />
         <Route path="/apps/:name" component={AppDetail} />
         <Route path="/upload" component={UploadLogs} />
         <Route component={NotFound} />

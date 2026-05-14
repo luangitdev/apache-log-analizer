@@ -122,6 +122,34 @@ export const GetAppPagesResponseItem = zod.object({
 export const GetAppPagesResponse = zod.array(GetAppPagesResponseItem);
 
 /**
+ * @summary Top pages across all applications with hourly breakdown
+ */
+export const GetGlobalPagesQueryParams = zod.object({
+  sessionId: zod.coerce.number().nullish(),
+  appName: zod.coerce.string().nullish(),
+  hourFrom: zod.coerce.number().nullish(),
+  hourTo: zod.coerce.number().nullish(),
+  limit: zod.coerce.number().nullish(),
+});
+
+export const GetGlobalPagesResponseItem = zod.object({
+  url: zod.string(),
+  requestCount: zod.number(),
+  uniqueIPs: zod.number(),
+  avgBytes: zod.number().nullish(),
+  statusCodes: zod.record(zod.string(), zod.number()),
+  hourlyDistribution: zod
+    .array(
+      zod.object({
+        hour: zod.number(),
+        requestCount: zod.number(),
+      }),
+    )
+    .optional(),
+});
+export const GetGlobalPagesResponse = zod.array(GetGlobalPagesResponseItem);
+
+/**
  * @summary Overall statistics summary
  */
 export const GetOverviewQueryParams = zod.object({

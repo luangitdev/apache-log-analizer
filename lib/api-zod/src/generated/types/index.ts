@@ -11,6 +11,7 @@ export * from "./appSummary";
 export * from "./errorResponse";
 export * from "./getAppPagesParams";
 export * from "./getAppPatternsParams";
+export * from "./getGlobalPagesParams";
 export * from "./getHeatmapParams";
 export * from "./getOverviewParams";
 export * from "./getStatusCodesParams";

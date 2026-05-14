@@ -137,6 +137,29 @@ export type GetAppPagesParams = {
   limit?: number | null;
 };
 
+export type GetGlobalPagesParams = {
+  /**
+   * @nullable
+   */
+  sessionId?: number | null;
+  /**
+   * @nullable
+   */
+  appName?: string | null;
+  /**
+   * @nullable
+   */
+  hourFrom?: number | null;
+  /**
+   * @nullable
+   */
+  hourTo?: number | null;
+  /**
+   * @nullable
+   */
+  limit?: number | null;
+};
+
 export type GetOverviewParams = {
   /**
    * @nullable

@@ -185,6 +185,47 @@ paths:
                 items:
                   $ref: "#/components/schemas/PageStat"
 
+  /stats/pages:
+    get:
+      operationId: getGlobalPages
+      tags: [stats]
+      summary: Top pages across all applications with hourly breakdown
+      parameters:
+        - name: sessionId
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: appName
+          in: query
+          required: false
+          schema:
+            type: ["string", "null"]
+        - name: hourFrom
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: hourTo
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Top pages globally
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PageStat"
+
   /stats/overview:
     get:
       operationId: getOverview

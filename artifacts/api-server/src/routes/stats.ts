@@ -11,6 +11,79 @@ function parseSessionId(raw: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
+router.get("/pages", async (req, res) => {
+  const sessionId = parseSessionId(req.query.sessionId);
+  const appName = (req.query.appName as string) || null;
+  const hourFrom = req.query.hourFrom ? parseInt(req.query.hourFrom as string, 10) : null;
+  const hourTo = req.query.hourTo ? parseInt(req.query.hourTo as string, 10) : null;
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 30;
+
+  const filters = [
+    ...(sessionId !== null ? [eq(logEntriesTable.sessionId, sessionId)] : []),
+    ...(appName ? [eq(logEntriesTable.appName, appName)] : []),
+    ...(hourFrom !== null ? [sql`${logEntriesTable.hour} >= ${hourFrom}`] : []),
+    ...(hourTo !== null ? [sql`${logEntriesTable.hour} <= ${hourTo}`] : []),
+  ];
+  const where = filters.length > 0 ? and(...filters) : undefined;
+
+  const pageRows = await db
+    .select({
+      url: logEntriesTable.url,
+      appName: logEntriesTable.appName,
+      requestCount: sql<number>`cast(count(*) as integer)`,
+      uniqueIPs: sql<number>`cast(count(distinct ${logEntriesTable.ip}) as integer)`,
+      avgBytes: sql<number>`cast(avg(${logEntriesTable.bytes}) as numeric)`,
+    })
+    .from(logEntriesTable)
+    .where(where)
+    .groupBy(logEntriesTable.url, logEntriesTable.appName)
+    .orderBy(sql`count(*) desc`)
+    .limit(limit);
+
+  const pages = await Promise.all(
+    pageRows.map(async (row) => {
+      const pageFilters = [
+        eq(logEntriesTable.url, row.url),
+        ...(sessionId !== null ? [eq(logEntriesTable.sessionId, sessionId)] : []),
+        ...(appName ? [eq(logEntriesTable.appName, appName)] : []),
+      ];
+
+      const statusRows = await db
+        .select({
+          statusCode: logEntriesTable.statusCode,
+          cnt: sql<number>`cast(count(*) as integer)`,
+        })
+        .from(logEntriesTable)
+        .where(and(...pageFilters))
+        .groupBy(logEntriesTable.statusCode);
+
+      const statusCodes: Record<number, number> = {};
+      for (const sr of statusRows) statusCodes[sr.statusCode] = sr.cnt;
+
+      const hourlyRows = await db
+        .select({
+          hour: logEntriesTable.hour,
+          requestCount: sql<number>`cast(count(*) as integer)`,
+        })
+        .from(logEntriesTable)
+        .where(and(...pageFilters))
+        .groupBy(logEntriesTable.hour)
+        .orderBy(logEntriesTable.hour);
+
+      return {
+        url: row.url,
+        requestCount: row.requestCount,
+        uniqueIPs: row.uniqueIPs,
+        avgBytes: row.avgBytes !== null ? Number(row.avgBytes) : null,
+        statusCodes,
+        hourlyDistribution: hourlyRows.map((h) => ({ hour: h.hour, requestCount: h.requestCount })),
+      };
+    })
+  );
+
+  res.json(pages);
+});
+
 router.get("/overview", async (req, res) => {
   const sessionId = parseSessionId(req.query.sessionId);
   const where = sessionId !== null ? eq(logEntriesTable.sessionId, sessionId) : undefined;

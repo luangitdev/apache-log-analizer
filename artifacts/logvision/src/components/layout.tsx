@@ -4,7 +4,7 @@ import { useListLogs, useDeleteLog, useListApps, getListLogsQueryKey } from "@wo
 import { useSession } from "../hooks/use-session";
 import { Button } from "./ui/button";
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarProvider, SidebarTrigger, SidebarFooter } from "./ui/sidebar";
-import { Activity, LayoutDashboard, UploadCloud, Server, Trash2, ChevronDown, Check } from "lucide-react";
+import { Activity, LayoutDashboard, UploadCloud, Server, Trash2, ChevronDown, Check, Globe } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
@@ -102,6 +102,14 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
                       <Link href="/">
                         <LayoutDashboard className="h-4 w-4" />
                         <span>Dashboard</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild isActive={location === "/overview"}>
+                      <Link href="/overview">
+                        <Globe className="h-4 w-4" />
+                        <span>Global Overview</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

@@ -73,7 +73,10 @@ export default function UploadLogs() {
       for (let i = 0; i < totalChunks; i++) {
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
-        const chunkText = await file.slice(start, end).text();
+        // Use latin1 decoder — handles any byte sequence without throwing,
+        // including the non-UTF-8 bytes common in production Apache log files.
+        const arrayBuffer = await file.slice(start, end).arrayBuffer();
+        const chunkText = new TextDecoder("latin1").decode(arrayBuffer);
 
         const params = new URLSearchParams({
           uploadId,

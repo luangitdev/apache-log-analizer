@@ -45,28 +45,50 @@ function twoHoursFromNow() {
   return Date.now() + 2 * 60 * 60 * 1000;
 }
 
+function toRow(sessionId: number, e: NonNullable<ReturnType<typeof parseLine>>) {
+  return {
+    sessionId,
+    ip: e.ip,
+    timestamp: e.timestamp,
+    method: e.method,
+    url: e.url,
+    protocol: e.protocol,
+    statusCode: e.statusCode,
+    bytes: e.bytes,
+    referer: e.referer,
+    userAgent: e.userAgent,
+    appName: detectAppName(e.url),
+    hour: e.timestamp.getHours(),
+    dayOfWeek: e.timestamp.getDay(),
+  };
+}
+
 async function insertBatch(
   sessionId: number,
   entries: ReturnType<typeof parseLine>[]
-) {
-  if (!entries.length) return;
-  await db.insert(logEntriesTable).values(
-    (entries.filter(Boolean) as NonNullable<ReturnType<typeof parseLine>>[]).map((e) => ({
-      sessionId,
-      ip: e.ip,
-      timestamp: e.timestamp,
-      method: e.method,
-      url: e.url,
-      protocol: e.protocol,
-      statusCode: e.statusCode,
-      bytes: e.bytes,
-      referer: e.referer,
-      userAgent: e.userAgent,
-      appName: detectAppName(e.url),
-      hour: e.timestamp.getHours(),
-      dayOfWeek: e.timestamp.getDay(),
-    }))
+): Promise<number> {
+  const rows = (entries.filter(Boolean) as NonNullable<ReturnType<typeof parseLine>>[]).map(
+    (e) => toRow(sessionId, e)
   );
+  if (!rows.length) return 0;
+
+  try {
+    await db.insert(logEntriesTable).values(rows);
+    return rows.length;
+  } catch {
+    // Batch failed (likely a row with invalid chars that survived the parser).
+    // Fall back to one-by-one insertion so only the bad row is skipped.
+    let inserted = 0;
+    for (const row of rows) {
+      try {
+        await db.insert(logEntriesTable).values([row]);
+        inserted++;
+      } catch {
+        // Skip this row silently — the line had data the DB can't store.
+      }
+    }
+    return inserted;
+  }
 }
 
 function processText(leftover: string, text: string, isFinalChunk: boolean) {
@@ -165,14 +187,15 @@ router.post(
       processText(session.leftover, chunkText, isFinal);
 
     const BATCH_SIZE = 500;
+    let actuallyInserted = 0;
     for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-      await insertBatch(session.sessionId, entries.slice(i, i + BATCH_SIZE));
+      actuallyInserted += await insertBatch(session.sessionId, entries.slice(i, i + BATCH_SIZE));
     }
 
     session.leftover = newLeftover;
     session.chunksReceived++;
     session.totalLines += totalLines;
-    session.parsedLines += parsedLines;
+    session.parsedLines += actuallyInserted;
     if (minTs < session.minTs) session.minTs = minTs;
     if (maxTs > session.maxTs) session.maxTs = maxTs;
     session.expiresAt = twoHoursFromNow();

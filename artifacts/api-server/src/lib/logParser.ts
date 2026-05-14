@@ -21,6 +21,20 @@ const MONTHS: Record<string, number> = {
   Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
 };
 
+/**
+ * Remove null bytes and other characters that PostgreSQL rejects in text columns.
+ * Apache logs in production often contain Latin-1 or raw bytes in URLs / User-Agents.
+ */
+function sanitize(s: string | null | undefined): string | null {
+  if (s == null) return null;
+  // Strip null bytes (\x00) and other C0/C1 control chars except tab (\x09)
+  // Replace invalid UTF-16 surrogates with the replacement character
+  return s
+    .replace(/\x00/g, "")                      // null bytes → remove
+    .replace(/[\x01-\x08\x0b-\x1f\x7f]/g, "")  // other control chars → remove
+    .replace(/[\uD800-\uDFFF]/g, "\uFFFD");     // lone surrogates → replacement char
+}
+
 function parseApacheDate(raw: string): Date | null {
   // Format: 10/Oct/2000:13:55:36 -0700
   const m = raw.match(
@@ -48,6 +62,9 @@ function parseApacheDate(raw: string): Date | null {
 }
 
 export function parseLine(line: string): ParsedLogEntry | null {
+  // Quick sanity-check: skip lines that are clearly binary / contain null bytes
+  if (line.includes("\x00")) return null;
+
   const m = line.match(COMBINED_REGEX);
   if (!m) return null;
   const [, ip, dateStr, request, statusStr, bytesStr, referer, userAgent] = m;
@@ -66,15 +83,15 @@ export function parseLine(line: string): ParsedLogEntry | null {
   const bytes = bytesStr === "-" ? null : parseInt(bytesStr, 10);
 
   return {
-    ip,
+    ip: sanitize(ip) ?? "0.0.0.0",
     timestamp: ts,
-    method,
-    url: url.split("?")[0], // strip query strings for grouping
-    protocol,
+    method: sanitize(method) ?? "GET",
+    url: sanitize(url.split("?")[0]) ?? "/", // strip query strings for grouping
+    protocol: sanitize(protocol),
     statusCode,
     bytes: isNaN(bytes ?? NaN) ? null : bytes,
-    referer: referer === "-" || !referer ? null : referer,
-    userAgent: userAgent === "-" || !userAgent ? null : userAgent,
+    referer: referer === "-" || !referer ? null : sanitize(referer),
+    userAgent: userAgent === "-" || !userAgent ? null : sanitize(userAgent),
   };
 }
 
@@ -82,9 +99,7 @@ export function detectAppName(url: string): string {
   // Use first path segment as the app name, fall back to "root"
   const parts = url.split("/").filter(Boolean);
   if (parts.length === 0) return "root";
-  // Skip common static asset extensions
-  const first = parts[0];
-  return first;
+  return parts[0];
 }
 
 export function parseLogLines(lines: string[]): {

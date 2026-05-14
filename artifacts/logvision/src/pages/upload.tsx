@@ -125,7 +125,7 @@ export default function UploadLogs() {
         <CardHeader>
           <CardTitle>Upload Log File</CardTitle>
           <CardDescription>
-            Supports Apache combined log format (access.log). Files up to 200 MB.
+            Supports Apache combined log format (access.log). Sem limite de tamanho.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

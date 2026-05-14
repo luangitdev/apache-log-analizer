@@ -3,9 +3,21 @@ import multer from "multer";
 import { db } from "@workspace/db";
 import { logSessionsTable, logEntriesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { parseLogLines, detectAppName } from "../lib/logParser";
+import { parseLine, detectAppName } from "../lib/logParser";
+import * as fs from "fs";
+import * as readline from "readline";
+import * as os from "os";
+import * as path from "path";
+
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+    filename: (_req, file, cb) =>
+      cb(null, `logvision-${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`),
+  }),
+});
 
 router.get("/", async (req, res) => {
   const sessions = await db.select().from(logSessionsTable).orderBy(logSessionsTable.createdAt);
@@ -25,68 +37,118 @@ router.get("/", async (req, res) => {
 
 router.post("/", upload.single("file"), async (req, res) => {
   const file = req.file;
-  if (!file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
+  if (!file) return res.status(400).json({ error: "No file uploaded" });
 
   const label = (req.body?.label as string) || file.originalname;
-  const content = file.buffer.toString("utf-8");
-  const lines = content.split("\n");
+  const tmpPath = file.path;
 
-  const { entries, totalLines, parsedLines } = parseLogLines(lines);
+  try {
+    // Create session record first so we have an ID to insert entries against
+    const [session] = await db
+      .insert(logSessionsTable)
+      .values({ filename: file.originalname, label, totalLines: 0, parsedLines: 0 })
+      .returning();
 
-  if (parsedLines === 0) {
-    return res.status(400).json({ error: "No valid Apache log entries found in file" });
+    const BATCH_SIZE = 500;
+    let batch: Parameters<typeof db.insert>[0] extends never ? never : {
+      sessionId: number; ip: string; timestamp: Date; method: string;
+      url: string; protocol: string | null; statusCode: number;
+      bytes: number | null; referer: string | null; userAgent: string | null;
+      appName: string; hour: number; dayOfWeek: number;
+    }[] = [];
+
+    let totalLines = 0;
+    let parsedLines = 0;
+    let minTs = Infinity;
+    let maxTs = -Infinity;
+
+    const flushBatch = async () => {
+      if (batch.length === 0) return;
+      await db.insert(logEntriesTable).values(batch);
+      batch = [];
+    };
+
+    await new Promise<void>((resolve, reject) => {
+      const rl = readline.createInterface({
+        input: fs.createReadStream(tmpPath, { encoding: "utf8" }),
+        crlfDelay: Infinity,
+      });
+
+      rl.on("line", async (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        totalLines++;
+
+        const entry = parseLine(trimmed);
+        if (!entry) return;
+        parsedLines++;
+
+        const ts = entry.timestamp.getTime();
+        if (ts < minTs) minTs = ts;
+        if (ts > maxTs) maxTs = ts;
+
+        batch.push({
+          sessionId: session.id,
+          ip: entry.ip,
+          timestamp: entry.timestamp,
+          method: entry.method,
+          url: entry.url,
+          protocol: entry.protocol,
+          statusCode: entry.statusCode,
+          bytes: entry.bytes,
+          referer: entry.referer,
+          userAgent: entry.userAgent,
+          appName: detectAppName(entry.url),
+          hour: entry.timestamp.getHours(),
+          dayOfWeek: entry.timestamp.getDay(),
+        });
+
+        if (batch.length >= BATCH_SIZE) {
+          rl.pause();
+          flushBatch()
+            .then(() => rl.resume())
+            .catch(reject);
+        }
+      });
+
+      rl.on("close", resolve);
+      rl.on("error", reject);
+    });
+
+    // Flush any remaining entries
+    await flushBatch();
+
+    if (parsedLines === 0) {
+      await db.delete(logSessionsTable).where(eq(logSessionsTable.id, session.id));
+      return res.status(400).json({ error: "No valid Apache log entries found in file" });
+    }
+
+    // Update session with final counts and date range
+    const [updated] = await db
+      .update(logSessionsTable)
+      .set({
+        totalLines,
+        parsedLines,
+        dateFrom: isFinite(minTs) ? new Date(minTs) : null,
+        dateTo: isFinite(maxTs) ? new Date(maxTs) : null,
+      })
+      .where(eq(logSessionsTable.id, session.id))
+      .returning();
+
+    return res.status(201).json({
+      id: updated.id,
+      filename: updated.filename,
+      label: updated.label,
+      totalLines: updated.totalLines,
+      parsedLines: updated.parsedLines,
+      dateFrom: updated.dateFrom?.toISOString() ?? null,
+      dateTo: updated.dateTo?.toISOString() ?? null,
+      createdAt: updated.createdAt.toISOString(),
+    });
+  } finally {
+    // Always clean up the temp file
+    fs.unlink(tmpPath, () => {});
   }
-
-  const timestamps = entries.map((e) => e.timestamp.getTime());
-  const dateFrom = new Date(Math.min(...timestamps));
-  const dateTo = new Date(Math.max(...timestamps));
-
-  const [session] = await db
-    .insert(logSessionsTable)
-    .values({
-      filename: file.originalname,
-      label,
-      totalLines,
-      parsedLines,
-      dateFrom,
-      dateTo,
-    })
-    .returning();
-
-  const BATCH_SIZE = 500;
-  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
-    const batch = entries.slice(i, i + BATCH_SIZE);
-    await db.insert(logEntriesTable).values(
-      batch.map((e) => ({
-        sessionId: session.id,
-        ip: e.ip,
-        timestamp: e.timestamp,
-        method: e.method,
-        url: e.url,
-        protocol: e.protocol,
-        statusCode: e.statusCode,
-        bytes: e.bytes,
-        referer: e.referer,
-        userAgent: e.userAgent,
-        appName: detectAppName(e.url),
-        hour: e.timestamp.getHours(),
-        dayOfWeek: e.timestamp.getDay(),
-      }))
-    );
-  }
-
-  return res.status(201).json({
-    id: session.id,
-    filename: session.filename,
-    label: session.label,
-    totalLines: session.totalLines,
-    parsedLines: session.parsedLines,
-    dateFrom: session.dateFrom?.toISOString() ?? null,
-    dateTo: session.dateTo?.toISOString() ?? null,
-    createdAt: session.createdAt.toISOString(),
-  });
 });
 
 router.delete("/:sessionId", async (req, res) => {

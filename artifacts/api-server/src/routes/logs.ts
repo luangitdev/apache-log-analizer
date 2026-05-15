@@ -64,6 +64,38 @@ function toRow(sessionId: number, e: NonNullable<ReturnType<typeof parseLine>>) 
   };
 }
 
+type InsertRow = ReturnType<typeof toRow>;
+
+/**
+ * Insert already-mapped rows. On failure, bisect and retry each half independently,
+ * recursing until the batch is ≤ minBatch — at that point log the error and skip.
+ * This guarantees we never spin on thousands of individual queries (old one-by-one
+ * approach caused 5-minute proxy timeouts on chunks with bad rows).
+ */
+async function insertRows(
+  rows: InsertRow[],
+  sessionId: number,
+  minBatch = 10
+): Promise<number> {
+  if (!rows.length) return 0;
+  try {
+    await db.insert(logEntriesTable).values(rows);
+    return rows.length;
+  } catch (err) {
+    if (rows.length <= minBatch) {
+      logger.warn(
+        { err, sessionId, batchSize: rows.length },
+        "Skipping small batch that still fails after bisection — likely invalid characters in data"
+      );
+      return 0;
+    }
+    const mid = Math.floor(rows.length / 2);
+    const left = await insertRows(rows.slice(0, mid), sessionId, minBatch);
+    const right = await insertRows(rows.slice(mid), sessionId, minBatch);
+    return left + right;
+  }
+}
+
 async function insertBatch(
   sessionId: number,
   entries: ReturnType<typeof parseLine>[]
@@ -71,25 +103,7 @@ async function insertBatch(
   const rows = (entries.filter(Boolean) as NonNullable<ReturnType<typeof parseLine>>[]).map(
     (e) => toRow(sessionId, e)
   );
-  if (!rows.length) return 0;
-
-  try {
-    await db.insert(logEntriesTable).values(rows);
-    return rows.length;
-  } catch {
-    // Batch failed (likely a row with invalid chars that survived the parser).
-    // Fall back to one-by-one insertion so only the bad row is skipped.
-    let inserted = 0;
-    for (const row of rows) {
-      try {
-        await db.insert(logEntriesTable).values([row]);
-        inserted++;
-      } catch {
-        // Skip this row silently — the line had data the DB can't store.
-      }
-    }
-    return inserted;
-  }
+  return insertRows(rows, sessionId);
 }
 
 function processText(leftover: string, text: string, isFinalChunk: boolean) {

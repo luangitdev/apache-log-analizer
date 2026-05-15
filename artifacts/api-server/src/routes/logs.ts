@@ -7,6 +7,7 @@ import { parseLine, detectAppName } from "../lib/logParser";
 import * as fs from "fs";
 import * as readline from "readline";
 import * as os from "os";
+import { logger } from "../lib/logger";
 
 const router = Router();
 

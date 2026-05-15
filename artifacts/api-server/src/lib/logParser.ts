@@ -21,18 +21,26 @@ const MONTHS: Record<string, number> = {
   Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
 };
 
+// Max string lengths to avoid any edge cases with large values
+const MAX_URL = 4096;
+const MAX_UA = 2048;
+const MAX_IP = 64;
+const MAX_METHOD = 32;
+const MAX_GENERIC = 1024;
+
 /**
- * Remove null bytes and other characters that PostgreSQL rejects in text columns.
- * Apache logs in production often contain Latin-1 or raw bytes in URLs / User-Agents.
+ * Remove null bytes and other characters that PostgreSQL rejects in text columns,
+ * and cap string lengths. Apache logs in production often contain Latin-1 or raw
+ * bytes in URLs / User-Agents.
  */
-function sanitize(s: string | null | undefined): string | null {
+function sanitize(s: string | null | undefined, maxLen = MAX_GENERIC): string | null {
   if (s == null) return null;
-  // Strip null bytes (\x00) and other C0/C1 control chars except tab (\x09)
-  // Replace invalid UTF-16 surrogates with the replacement character
-  return s
-    .replace(/\x00/g, "")                      // null bytes → remove
-    .replace(/[\x01-\x08\x0b-\x1f\x7f]/g, "")  // other control chars → remove
+  let result = s
+    .replace(/\x00/g, "")                      // null bytes → remove (PG rejects these)
+    .replace(/[\x01-\x08\x0b-\x1f\x7f]/g, "")  // other C0 control chars → remove
     .replace(/[\uD800-\uDFFF]/g, "\uFFFD");     // lone surrogates → replacement char
+  if (result.length > maxLen) result = result.slice(0, maxLen);
+  return result;
 }
 
 function parseApacheDate(raw: string): Date | null {
@@ -83,15 +91,15 @@ export function parseLine(line: string): ParsedLogEntry | null {
   const bytes = bytesStr === "-" ? null : parseInt(bytesStr, 10);
 
   return {
-    ip: sanitize(ip) ?? "0.0.0.0",
+    ip: sanitize(ip, MAX_IP) ?? "0.0.0.0",
     timestamp: ts,
-    method: sanitize(method) ?? "GET",
-    url: sanitize(url.split("?")[0]) ?? "/", // strip query strings for grouping
-    protocol: sanitize(protocol),
+    method: sanitize(method, MAX_METHOD) ?? "GET",
+    url: sanitize(url.split("?")[0], MAX_URL) ?? "/", // strip query strings for grouping
+    protocol: sanitize(protocol, MAX_METHOD),
     statusCode,
     bytes: isNaN(bytes ?? NaN) ? null : bytes,
-    referer: referer === "-" || !referer ? null : sanitize(referer),
-    userAgent: userAgent === "-" || !userAgent ? null : sanitize(userAgent),
+    referer: referer === "-" || !referer ? null : sanitize(referer, MAX_URL),
+    userAgent: userAgent === "-" || !userAgent ? null : sanitize(userAgent, MAX_UA),
   };
 }
 
